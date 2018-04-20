@@ -1,0 +1,195 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: sitecheker
+
+provider:
+  name: aws
+  runtime: python2.7
+  timeout: 60
+  stage: prod
+  region: ap-northeast-1
+  environment:
+    logging_level: INFO
+
+plugins:
+  - serverless-python-requirements
+
+functions:
+  dispatcher:
+    handler: dispatcher.dispatcher
+    name: dispatcher
+    memorySize: 256
+    role: DispatcherRole
+    events:
+      - schedule: rate(5 minutes)
+  checker:
+    handler: checker.checker
+    name: checker
+    memorySize: 256
+    role: CheckerRole
+
+resources:
+ Resources:
+   checkenv:
+     Type: AWS::DynamoDB::Table
+     Properties:
+       TableName: checkenv
+       AttributeDefinitions:
+         - AttributeName: url
+           AttributeType: S
+       KeySchema:
+         - AttributeName: url
+           KeyType: HASH
+       ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+   checkresult:
+     Type: AWS::DynamoDB::Table
+     Properties:
+       TableName: checkresult
+       AttributeDefinitions:
+         - AttributeName: url
+           AttributeType: S
+         - AttributeName: date
+           AttributeType: S
+       KeySchema:
+         - AttributeName: url
+           KeyType: HASH
+         - AttributeName: date
+           KeyType: RANGE
+       ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+       TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+   DispatcherRole:
+     Type: AWS::IAM::Role
+     Properties:
+       Path: /
+       RoleName: SitecheckerDispatchRole
+       AssumeRolePolicyDocument:
+         Version: '2012-10-17'
+         Statement:
+           - Effect: Allow
+             Principal:
+               Service:
+                 - lambda.amazonaws.com
+             Action: sts:AssumeRole
+       Policies:
+         - PolicyName: myPolicyName
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - logs:CreateLogGroup
+                   - logs:CreateLogStream
+                   - logs:PutLogEvents
+                 Resource: 
+                   - 'Fn::Join':
+                     - ':'
+                     -
+                       - 'arn:aws:logs'
+                       - Ref: 'AWS::Region'
+                       - Ref: 'AWS::AccountId'
+                       - 'log-group:/aws/lambda/*:*:*'
+               - Effect: "Allow"
+                 Action:
+                   - "s3:ListBucket"
+                 Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+               - Effect: "Allow"
+                 Action:
+                   - "s3:PutObject"
+                 Resource:
+                   Fn::Join:
+                     - ""
+                     - - "arn:aws:s3:::"
+                       - "Ref" : "ServerlessDeploymentBucket"
+                       - "/*"
+               - Effect: "Allow"
+                 Action:
+                   - "dynamodb:Scan"
+                 Resource: arn:aws:dynamodb:ap-northeast-1:392587324920:table/checkenv
+               - Effect: "Allow"
+                 Action:
+                   - "lambda:InvokeFunction"
+                 Resource: "*"
+               - Effect: "Allow"
+                 Action:
+                   - "xray:PutTraceSegments"
+                   - "xray:PutTelemetryRecords"
+                 Resource: "*"
+   CheckerRole:
+     Type: AWS::IAM::Role
+     Properties:
+       Path: /
+       RoleName: CheckerRole
+       AssumeRolePolicyDocument:
+         Version: '2012-10-17'
+         Statement:
+           - Effect: Allow
+             Principal:
+               Service:
+                 - lambda.amazonaws.com
+             Action: sts:AssumeRole
+       Policies:
+         - PolicyName: myPolicyName
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - logs:CreateLogGroup
+                   - logs:CreateLogStream
+                   - logs:PutLogEvents
+                 Resource: 
+                   - 'Fn::Join':
+                     - ':'
+                     -
+                       - 'arn:aws:logs'
+                       - Ref: 'AWS::Region'
+                       - Ref: 'AWS::AccountId'
+                       - 'log-group:/aws/lambda/*:*:*'
+               - Effect: "Allow"
+                 Action:
+                   - "s3:ListBucket"
+                 Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+               - Effect: "Allow"
+                 Action:
+                   - "s3:PutObject"
+                 Resource:
+                   Fn::Join:
+                     - ""
+                     - - "arn:aws:s3:::"
+                       - "Ref" : "ServerlessDeploymentBucket"
+                       - "/*"
+               - Effect: "Allow"
+                 Action:
+                   - "sns:Publish"
+                 Resource: arn:aws:sns:ap-northeast-1:392587324920:sitechecker-alert
+               - Effect: "Allow"
+                 Action:
+                   - "dynamodb:PutItem"
+                 Resource: arn:aws:dynamodb:ap-northeast-1:392587324920:table/checkresult
+               - Effect: "Allow"
+                 Action:
+                   - "xray:PutTraceSegments"
+                   - "xray:PutTelemetryRecords"
+                 Resource: "*"
+               - Effect: "Allow"
+                 Action:
+                   - "sts:AssumeRole"
+                   - "ssm:GetParameters"
+                 Resource: "*"
